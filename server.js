@@ -1,17 +1,44 @@
+require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 app.use((req, res, next) => {
     console.log(`[Request] ${req.method} ${req.url}`);
     next();
 });
 
+const dbFilePath = path.join(__dirname, 'database.json');
+
+function loadDatabase() {
+    try {
+        if (fs.existsSync(dbFilePath)) {
+            return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+        }
+    } catch (err) {
+        console.error('Error reading database file:', err);
+    }
+    return { players: {}, rooms: [] };
+}
+
+function saveDatabase(data) {
+    try {
+        fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err) {
+        console.error('Error writing database file:', err);
+    }
+}
+
+let db = loadDatabase();
+
 app.get('/', (req, res) => {
-    res.send('Home Sweet Home Online Private Server is running!');
+    res.send('Home Sweet Home Online Local Private Server is running!');
 });
 
 app.all('/live/player/authen', (req, res) => {
@@ -138,16 +165,22 @@ app.all('/logapi/v1/check/serverdetect', (req, res) => {
 });
 
 app.all('/matchmaking/v1/room/create', (req, res) => {
+    const newRoom = {
+        roomId: "room_" + Date.now(),
+        roomName: req.body.roomName || "Private Room",
+        ip: "127.0.0.1",
+        port: 7777,
+        currentPlayers: 1,
+        maxPlayers: 5
+    };
+    db.rooms.push(newRoom);
+    saveDatabase(db);
+
     res.json({
         status: "success",
         code: 0,
         message: "Room created successfully",
-        data: {
-            roomId: "room_999",
-            roomName: "Private Room",
-            ip: "127.0.0.1",
-            port: 7777
-        }
+        data: newRoom
     });
 });
 
@@ -157,17 +190,7 @@ app.all('/matchmaking/v1/room/list', (req, res) => {
         code: 0,
         message: "OK",
         data: {
-            rooms: [
-                {
-                    roomId: "room_999",
-                    roomName: "Private Room",
-                    hostName: "Host",
-                    currentPlayers: 1,
-                    maxPlayers: 5,
-                    ip: "127.0.0.1",
-                    port: 7777
-                }
-            ]
+            rooms: db.rooms
         }
     });
 });
@@ -195,5 +218,5 @@ app.all('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on port ${PORT} (File-based database)`);
 });
