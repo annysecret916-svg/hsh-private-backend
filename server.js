@@ -4,7 +4,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// ตัวอย่าง Endpoint สำหรับเช็กสถานะหรือล็อกอินของเกม
 app.get('/', (req, res) => {
     res.send('Home Sweet Home Online Private Server is running!');
 });
