@@ -1,0 +1,14 @@
+{
+  "serverinfo": {
+    "correctversion": true,
+    "serverVersion": "1.0.6.0",
+    "ServerDevVersion": "0.0.0.1",
+    "IsOnline": true,
+    "IsDevOnline": false
+  },
+  "players": {},
+  "rooms": [],
+  "inventories": {},
+  "characterslots": {},
+  "playerstats": {}
+}
