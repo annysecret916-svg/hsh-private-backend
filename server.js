@@ -14,7 +14,10 @@ const dbFilePath = path.join(__dirname, 'database.json');
 function loadDatabase() {
     try {
         if (fs.existsSync(dbFilePath)) {
-            return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+            const data = JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+            if (!data.players) data.players = {};
+            if (!data.rooms) data.rooms = [];
+            return data;
         }
     } catch (err) {
         console.error('Error reading database file:', err);
@@ -45,15 +48,32 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', uptime: process.uptime() });
 });
 
+// ระบบตรวจสอบและสร้างข้อมูลผู้เล่นอัตโนมัติ
 app.all('/live/player/authen', (req, res) => {
+    const uid = req.body.uid || req.query.uid || "default_user";
+    
+    if (!db.players[uid]) {
+        db.players[uid] = {
+            token: "mock_token_" + Date.now(),
+            uid: uid,
+            name: req.body.name || "Player",
+            level: 99,
+            exp: 0,
+            inventory: [],
+            characterslots: [],
+            profile: {}
+        };
+        saveDatabase(db);
+    }
+
     res.json({
         status: "success",
         code: 0,
         message: "OK",
         data: {
-            token: "mock_token_12345",
-            uid: "123456789",
-            name: "Player"
+            token: db.players[uid].token,
+            uid: uid,
+            name: db.players[uid].name
         }
     });
 });
@@ -63,9 +83,7 @@ app.all('/live/player/gameplay/checkversion', (req, res) => {
         status: "success",
         code: 0,
         message: "OK",
-        data: {
-            latestVersion: true
-        }
+        data: { latestVersion: true }
     });
 });
 
@@ -194,9 +212,7 @@ app.all('/matchmaking/v1/room/list', (req, res) => {
         status: "success",
         code: 0,
         message: "OK",
-        data: {
-            rooms: db.rooms
-        }
+        data: { rooms: db.rooms }
     });
 });
 
