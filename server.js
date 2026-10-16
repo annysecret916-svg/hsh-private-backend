@@ -11,7 +11,7 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 const dbFilePath = path.join(__dirname, 'database.json');
 
-// โหลดฐานข้อมูลจากไฟล์ JSON (หากไม่มีจะสร้างค่าเริ่มต้นให้รวมถึง serverinfo ที่เกมต้องใช้)
+// ระบบโหลดฐานข้อมูลจากไฟล์ database.json
 function loadDatabase() {
     try {
         if (fs.existsSync(dbFilePath)) {
@@ -59,7 +59,7 @@ function saveDatabase(data) {
 
 let db = loadDatabase();
 
-// Debug Request
+// Debug Request Middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
@@ -73,7 +73,7 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', uptime: process.uptime(), dbType: "JSON File" });
 });
 
-// Endpoint จำลอง serverinfo ที่เกมมักจะเรียกเช็กตอนเริ่มเชื่อมต่อ
+// Endpoint เช็กเวอร์ชันและข้อมูลเซิร์ฟเวอร์
 app.all('/serverinfo', (req, res) => {
     res.json({
         status: "success",
@@ -83,7 +83,30 @@ app.all('/serverinfo', (req, res) => {
     });
 });
 
-// ระบบตรวจสอบและสร้างข้อมูลผู้เล่นอัตโนมัติ (ป้องกัน Error code = 0)
+// Endpoint สำหรับให้ Launcher ดึงข้อมูลผู้เล่นไปแสดงผล
+app.all('/live/player/getdata', (req, res) => {
+    const uid = req.body.uid || req.query.uid || "default_user";
+    
+    if (!db.players[uid]) {
+        db.players[uid] = {
+            uid: uid,
+            name: "HSH_Player",
+            level: 99,
+            glory: 99999,
+            createdAt: new Date().toISOString()
+        };
+        saveDatabase(db);
+    }
+
+    res.json({
+        status: "success",
+        code: 0,
+        message: "OK",
+        data: db.players[uid]
+    });
+});
+
+// ระบบยืนยันตัวตนและสร้างข้อมูลผู้เล่นอัตโนมัติ (ป้องกัน Error code = 0)
 app.all('/live/player/authen', (req, res) => {
     const uid = req.body.uid || req.query.uid || "user_" + Date.now();
     
@@ -92,6 +115,8 @@ app.all('/live/player/authen', (req, res) => {
             token: "mock_token_" + Math.random().toString(36).substring(7),
             uid: uid,
             name: req.body.name || "HSH_Player",
+            level: 99,
+            glory: 99999,
             createdAt: new Date().toISOString()
         };
         db.playerstats = db.playerstats || {};
@@ -267,7 +292,7 @@ app.all('/matchmaking/v1/room/join', (req, res) => {
     });
 });
 
-// ดักจับทุก Request ที่เหลือเพื่อกันเกมหลุด Error code = 0
+// ดักจับทุก Request ที่เหลือเพื่อป้องกันเกมขึ้น Error code = 0
 app.all('*', (req, res) => {
     res.json({
         status: "success",
