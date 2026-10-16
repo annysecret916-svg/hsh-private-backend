@@ -6,39 +6,46 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 const dbFilePath = path.join(__dirname, 'database.json');
 
-// ระบบจำลองฐานข้อมูลเสมือน (MongoDB-like schema structure)
+// โหลดฐานข้อมูลจากไฟล์ JSON (หากไม่มีจะสร้างค่าเริ่มต้นให้รวมถึง serverinfo ที่เกมต้องใช้)
 function loadDatabase() {
     try {
         if (fs.existsSync(dbFilePath)) {
             const data = JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-            return {
-                players: data.players || {},
-                rooms: data.rooms || [],
-                inventories: data.inventories || {},
-                characterslots: data.characterslots || {},
-                playerstats: data.playerstats || {},
-                storerelics: data.storerelics || {},
-                mailboxes: data.mailboxes || {},
-                matchlogs: data.matchlogs || []
-            };
+            if (!data.serverinfo) {
+                data.serverinfo = {
+                    correctversion: true,
+                    serverVersion: "1.0.6.0",
+                    ServerDevVersion: "0.0.0.1",
+                    IsOnline: true,
+                    IsDevOnline: false
+                };
+            }
+            if (!data.players) data.players = {};
+            if (!data.rooms) data.rooms = [];
+            return data;
         }
     } catch (err) {
         console.error('Error reading database file:', err);
     }
+    
     return {
+        serverinfo: {
+            correctversion: true,
+            serverVersion: "1.0.6.0",
+            ServerDevVersion: "0.0.0.1",
+            IsOnline: true,
+            IsDevOnline: false
+        },
         players: {},
         rooms: [],
         inventories: {},
         characterslots: {},
-        playerstats: {},
-        storerelics: {},
-        mailboxes: {},
-        matchlogs: []
+        playerstats: {}
     };
 }
 
@@ -52,20 +59,31 @@ function saveDatabase(data) {
 
 let db = loadDatabase();
 
+// Debug Request
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
 app.get('/', (req, res) => {
-    res.status(200).send('Home Sweet Home Online Private Server (MongoDB-Style File DB) is Running & Healthy!');
+    res.status(200).send('Home Sweet Home Online Private Server (JSON Storage) is Running & Healthy!');
 });
 
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'OK', uptime: process.uptime(), dbStatus: "Connected" });
+    res.status(200).json({ status: 'OK', uptime: process.uptime(), dbType: "JSON File" });
 });
 
-// 1. ระบบจัดการผู้เล่นและการยืนยันตัวตน (Authentication & Profiles)
+// Endpoint จำลอง serverinfo ที่เกมมักจะเรียกเช็กตอนเริ่มเชื่อมต่อ
+app.all('/serverinfo', (req, res) => {
+    res.json({
+        status: "success",
+        code: 0,
+        message: "OK",
+        data: db.serverinfo
+    });
+});
+
+// ระบบตรวจสอบและสร้างข้อมูลผู้เล่นอัตโนมัติ (ป้องกัน Error code = 0)
 app.all('/live/player/authen', (req, res) => {
     const uid = req.body.uid || req.query.uid || "user_" + Date.now();
     
@@ -76,10 +94,12 @@ app.all('/live/player/authen', (req, res) => {
             name: req.body.name || "HSH_Player",
             createdAt: new Date().toISOString()
         };
-        db.playerstats[uid] = { level: 99, exp: 0, gold: 999999, cash: 999999 };
+        db.playerstats = db.playerstats || {};
+        db.playerstats[uid] = { level: 99, exp: 0, glory: 99999 };
+        db.inventories = db.inventories || {};
         db.inventories[uid] = { items: [] };
+        db.characterslots = db.characterslots || {};
         db.characterslots[uid] = { slots: [] };
-        db.mailboxes[uid] = { mails: [] };
         saveDatabase(db);
     }
 
@@ -101,7 +121,7 @@ app.all('/live/player/gameplay/checkversion', (req, res) => {
 
 app.all('/live/player/inventory/getAll', (req, res) => {
     const uid = req.body.uid || req.query.uid || "default_user";
-    const items = db.inventories[uid] ? db.inventories[uid].items : [];
+    const items = (db.inventories && db.inventories[uid]) ? db.inventories[uid].items : [];
     res.json({ status: "success", code: 0, data: { items: items } });
 });
 
@@ -111,7 +131,7 @@ app.all('/live/player/curserelic/get', (req, res) => {
 
 app.all('/live/player/characterslot/get', (req, res) => {
     const uid = req.body.uid || req.query.uid || "default_user";
-    const slots = db.characterslots[uid] ? db.characterslots[uid].slots : [];
+    const slots = (db.characterslots && db.characterslots[uid]) ? db.characterslots[uid].slots : [];
     res.json({ status: "success", code: 0, data: { slots: slots } });
 });
 
@@ -121,7 +141,7 @@ app.all('/live/player/characterslot/edit', (req, res) => {
 
 app.all('/live/player/playerstat/get', (req, res) => {
     const uid = req.body.uid || req.query.uid || "default_user";
-    const stats = db.playerstats[uid] || { level: 99, exp: 0 };
+    const stats = (db.playerstats && db.playerstats[uid]) ? db.playerstats[uid] : { level: 99, exp: 0, glory: 99999 };
     res.json({ status: "success", code: 0, data: stats });
 });
 
@@ -141,7 +161,6 @@ app.all('/live/player/gameplay/endgameresult', (req, res) => {
     res.json({ status: "success", code: 0, data: {} });
 });
 
-// 2. ระบบร้านค้าและรายการไอเทม (Store & Product Listings)
 app.all('/live/productlisting/list', (req, res) => {
     res.json({ status: "success", code: 0, data: { list: [] } });
 });
@@ -158,7 +177,6 @@ app.all('/live/store/productlisting/list/tag', (req, res) => {
     res.json({ status: "success", code: 0, data: { list: [] } });
 });
 
-// 3. ระบบเสริมและกาชาปอง (Immortal, Bonus, Mailbox, Gacha)
 app.all('/live/immortal/player/get', (req, res) => {
     res.json({ status: "success", code: 0, data: {} });
 });
@@ -187,14 +205,11 @@ app.all('/live/treasure/api/progress/get', (req, res) => {
     res.json({ status: "success", code: 0, data: {} });
 });
 
-// 4. ระบบบันทึก Log ต่างๆ (Logging APIs)
 app.all('/logapi/v1/check/penalty', (req, res) => {
     res.json({ status: "success", code: 0, data: { penalty: false } });
 });
 
 app.all('/logapi/v1/add/matchlog', (req, res) => {
-    db.matchlogs.push({ timestamp: new Date().toISOString(), body: req.body });
-    saveDatabase(db);
     res.json({ status: "success", code: 0, data: {} });
 });
 
@@ -210,7 +225,6 @@ app.all('/logapi/v1/check/serverdetect', (req, res) => {
     res.json({ status: "success", code: 0, data: {} });
 });
 
-// 5. ระบบจับคู่และจัดการห้อง (Matchmaking & Rooms)
 app.all('/matchmaking/v1/room/create', (req, res) => {
     const newRoom = {
         roomId: "room_" + Date.now(),
@@ -253,7 +267,7 @@ app.all('/matchmaking/v1/room/join', (req, res) => {
     });
 });
 
-// ดักจับทุก Request ที่เหลือไม่ให้เกมหลุด
+// ดักจับทุก Request ที่เหลือเพื่อกันเกมหลุด Error code = 0
 app.all('*', (req, res) => {
     res.json({
         status: "success",
@@ -264,5 +278,5 @@ app.all('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running smoothly with MongoDB-Style DB on port ${PORT}`);
+    console.log(`Server running successfully using local JSON storage on port ${PORT}`);
 });
